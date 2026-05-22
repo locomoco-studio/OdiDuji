@@ -1,0 +1,274 @@
+{
+  "name": "OdidujI MVP - Upload Parse Index",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "image-upload",
+        "responseMode": "responseNode",
+        "options": {
+          "binaryData": true
+        }
+      },
+      "id": "b6938e51-14ec-45ad-b532-950ad153d901",
+      "name": "Webhook - image-upload",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-980, -220],
+      "webhookId": "odiduji-image-upload"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst maxBytes = 10 * 1024 * 1024;\nconst allowedMime = new Set(['image/jpeg', 'image/png']);\nconst binaryKeys = Object.keys($binary || {});\nconst imageKey = binaryKeys[0];\nconst binary = imageKey ? $binary[imageKey] : null;\nconst fileName = binary?.fileName || $json?.file_name || 'upload.jpg';\nconst mimeType = binary?.mimeType || $json?.mime_type || '';\nconst ext = fileName.split('.').pop().toLowerCase();\nconst normalizedExt = ext === 'jpeg' ? 'jpg' : ext;\nconst fileSize = Number(binary?.fileSize || binary?.fileSizeBytes || $json?.file_size_bytes || 0);\nconst validType = Boolean(binary) && allowedMime.has(mimeType) && ['jpg', 'png'].includes(normalizedExt);\nif (!validType) {\n  return [{ json: { status: 'rejected', validation_status: 'rejected', reject_reason: 'unsupported_file_type', allowed_extensions: ['jpg', 'png'], processing_log: ['received', 'rejected'] } }];\n}\nif (fileSize > maxBytes) {\n  return [{ json: { status: 'rejected', validation_status: 'rejected', reject_reason: 'file_too_large', max_file_size_bytes: maxBytes, processing_log: ['received', 'rejected'] } }];\n}\nconst data = await this.helpers.getBinaryDataBuffer(0, imageKey);\nconst fileHash = crypto.createHash('sha256').update(data).digest('hex');\nconst liveId = String(Date.now()).slice(-9);\nconst captureId = `CAP-LIVE-${liveId}`;\nconst sourceImagePath = `/static/captures/${captureId}.${normalizedExt}`;\nreturn [{\n  json: {\n    upload_job_id: `JOB-${Date.now()}`,\n    capture_id: captureId,\n    status: 'validated',\n    validation_status: 'accepted',\n    file_hash: fileHash,\n    file_name: fileName,\n    file_ext: normalizedExt,\n    mime_type: mimeType,\n    file_size_bytes: fileSize,\n    source_image_path: sourceImagePath,\n    sqlite_db_path: $env.ODIDUJI_DB_PATH || '/database/odiduji.sqlite',\n    capture_dir: $env.ODIDUJI_CAPTURE_DIR || '/static/captures',\n    processing_log: ['received', 'validated']\n  },\n  binary: { data: binary }\n}];"
+      },
+      "id": "e308a01b-6ca6-4492-9de5-37621f3b4802",
+      "name": "Validate JPG PNG and hash",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-740, -220]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equal",
+              "value2": "rejected"
+            }
+          ]
+        }
+      },
+      "id": "afd5b33e-1f9a-4b2c-a5e9-d90199168047",
+      "name": "Rejected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [-500, -220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "bd4b2ba9-036c-42b2-a802-cd60176a635d",
+      "name": "Respond rejected upload",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-260, -360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst captureDir = $json.capture_dir || '/static/captures';\nfs.mkdirSync(captureDir, { recursive: true });\nconst filePath = path.join(captureDir, `${$json.capture_id}.${$json.file_ext}`);\nconst data = await this.helpers.getBinaryDataBuffer(0, 'data');\nfs.writeFileSync(filePath, data);\nreturn [{ json: { ...$json, status: 'received', disk_path: filePath, processing_log: [...$json.processing_log, 'stored_original'] }, binary: $binary }];"
+      },
+      "id": "e5fd5095-3bcf-46a4-8643-59f3bd7627a1",
+      "name": "Store original capture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-260, -120]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$json, upstage_parse_url: $env.UPSTAGE_DOCUMENT_PARSE_URL || 'https://api.upstage.ai/v1/document-ai/document-parse', parse_request: { ocr: 'force', output_format: 'markdown' }, status: 'parsed_pending' }, binary: $binary }];"
+      },
+      "id": "58d3eda4-ee5b-46dd-a492-4058f86150b0",
+      "name": "Prepare Document Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-20, -120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.upstage_parse_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.UPSTAGE_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "document",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "ocr",
+              "value": "force"
+            },
+            {
+              "name": "output_format",
+              "value": "markdown"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "871f9953-b540-4809-85e8-ee1b421fe64a",
+      "name": "Upstage Document Parse",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [220, -120],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json || {};\nconst content = response.content || response.markdown || response.text || response.parsed_markdown || '';\nconst confidence = Number(response.confidence || response.parse_confidence || (content ? 0.8 : 0.5));\nreturn [{ json: { ...$('Store original capture').item.json, parsed_markdown: content, layout_blocks: response.elements || response.layout_blocks || [], evidence_candidates: response.evidence_candidates || [], parse_confidence: confidence, status: 'parsed', processing_log: [...$('Store original capture').item.json.processing_log, 'parsed'] }, binary: $('Store original capture').item.binary }];"
+      },
+      "id": "3a07b5c4-92a6-4ee2-9268-df5b99533c0d",
+      "name": "Normalize Parse Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, -120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = ($json.parsed_markdown || '').toLowerCase();\nlet docType = 'noise';\nif (text.includes('과제') || text.includes('제출')) docType = 'assignment';\nelse if (text.includes('장학')) docType = 'scholarship';\nelse if (text.includes('영수증') || text.includes('금액') || text.includes('원')) docType = 'receipt';\nelse if (text.includes('장소') || text.includes('주소')) docType = 'place_link';\nelse if (text.trim()) docType = 'notice';\nconst categoryConfidence = $json.parsed_markdown ? 0.72 : 0.5;\nconst candidates = [\n  { doc_type: docType, confidence: categoryConfidence },\n  { doc_type: 'notice', confidence: 0.58 },\n  { doc_type: 'assignment', confidence: 0.44 }\n];\nconst classificationState = categoryConfidence < 0.7 ? 'Classify_Ambiguous' : 'Classified';\nreturn [{ json: { ...$json, doc_type: docType, category_confidence: categoryConfidence, category_candidates: candidates, classification_state: classificationState, status: 'classified', processing_log: [...$json.processing_log, 'classified'] }, binary: $binary }];"
+      },
+      "id": "a93de515-68e8-4594-a2cf-9ac40236f852",
+      "name": "Document Classify MVP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, -120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const registry = {\n  notice: { schema_id: 'notice_v1', fields: ['title', 'source', 'created_date', 'event_date', 'deadline', 'has_submission', 'location_name'] },\n  assignment: { schema_id: 'assignment_v1', fields: ['title', 'deadline', 'required_submission', 'has_submission'] },\n  scholarship: { schema_id: 'scholarship_v1', fields: ['title', 'source', 'deadline', 'amount', 'required_submission', 'location_name'] },\n  receipt: { schema_id: 'receipt_v1', fields: ['title', 'created_date', 'amount', 'currency', 'location_name', 'address'] },\n  place_link: { schema_id: 'place_link_v1', fields: ['title', 'source', 'event_date', 'location_name', 'address'] },\n  noise: { schema_id: 'noise_v1', fields: ['title', 'source'] }\n};\nconst schema = registry[$json.doc_type];\nif (!schema) return [{ json: { ...$json, status: 'failed', error_code: 'schema_not_found' }, binary: $binary }];\nreturn [{ json: { ...$json, extract_schema_id: schema.schema_id, schema_json: schema, processing_log: [...$json.processing_log, 'schema_routed'] }, binary: $binary }];"
+      },
+      "id": "60fc7f04-a3d8-4bdc-b548-0a60ca91ee33",
+      "name": "Schema Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, -120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.parsed_markdown || '';\nconst lines = text.split(/\\n+/).map((line) => line.trim()).filter(Boolean);\nconst title = lines[0]?.replace(/^#+\\s*/, '') || $json.file_name;\nconst amountMatch = text.match(/([0-9][0-9,]*)\\s*(원|krw|₩)/i);\nconst dateMatch = text.match(/(20\\d{2}[.\\-년\\s]+\\d{1,2}[.\\-월\\s]+\\d{1,2})/);\nconst amount = amountMatch ? Number(amountMatch[1].replace(/,/g, '')) : null;\nconst deadline = dateMatch ? dateMatch[1].replace(/[년월.]/g, '-').replace(/\\s+/g, '').replace(/-$/g, '') : null;\nconst extractConfidence = text ? 0.72 : 0.5;\nconst evidence = {\n  title,\n  amount: amountMatch?.[0] || null,\n  deadline: dateMatch?.[0] || null,\n  doc_type: $json.doc_type\n};\nconst needsReview = [$json.parse_confidence, $json.category_confidence, extractConfidence].some((value) => Number(value) < 0.7);\nreturn [{ json: { ...$json, title, source: 'live_upload', deadline, amount, currency: amount ? 'KRW' : null, evidence_text: evidence, extract_confidence: extractConfidence, confidence: Math.min(Number($json.parse_confidence || 0), Number($json.category_confidence || 0), extractConfidence), needs_review: needsReview, status: 'extracted', processing_log: [...$json.processing_log, 'extracted', 'normalized'] }, binary: $binary }];"
+      },
+      "id": "e84dc4d0-97d8-4d45-bcef-5530a7f1328d",
+      "name": "Information Extract MVP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, -120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nlet DatabaseSync;\ntry {\n  ({ DatabaseSync } = require('node:sqlite'));\n} catch (error) {\n  return [{ json: { ...$json, status: 'failed', error_code: 'sqlite_write_unavailable', error_message: 'node:sqlite is not available in this n8n runtime', sqlite_write_contract: { db_path: $json.sqlite_db_path, transaction: true, tables: ['capture_records', 'metadata_index', 'cache_entries'], duplicate_key: 'file_hash' }, processing_log: [...$json.processing_log, 'sqlite_unavailable'] } }];\n}\nconst db = new DatabaseSync($json.sqlite_db_path);\ntry {\n  db.exec('PRAGMA foreign_keys = ON');\n  const duplicate = db.prepare('SELECT capture_id, source_image_path FROM capture_records WHERE file_hash = ?').get($json.file_hash);\n  if (duplicate) {\n    if ($json.disk_path && fs.existsSync($json.disk_path)) fs.unlinkSync($json.disk_path);\n    return [{ json: { ...$json, capture_id: duplicate.capture_id, source_image_path: duplicate.source_image_path, status: 'ready', cache_hit: true, processing_log: [...$json.processing_log, 'cache_hit', 'ready'] } }];\n  }\n  db.exec('BEGIN IMMEDIATE');\n  db.prepare(`INSERT INTO capture_records (capture_id, source_image_path, file_hash, file_name, file_ext, mime_type, file_size_bytes, file_meta_json, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready')`).run($json.capture_id, $json.source_image_path, $json.file_hash, $json.file_name, $json.file_ext, $json.mime_type, $json.file_size_bytes, JSON.stringify({ upload_source: 'n8n', disk_path: $json.disk_path }));\n  db.prepare(`INSERT INTO metadata_index (capture_id, doc_type, title, source, deadline, amount, currency, evidence_text_json, parsed_markdown, layout_blocks_json, category_candidates_json, parse_confidence, category_confidence, extract_confidence, confidence, classification_state, needs_review) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run($json.capture_id, $json.doc_type, $json.title || null, $json.source || null, $json.deadline || null, $json.amount || null, $json.currency || null, JSON.stringify($json.evidence_text || {}), $json.parsed_markdown || null, JSON.stringify($json.layout_blocks || []), JSON.stringify($json.category_candidates || []), Number($json.parse_confidence || 0), Number($json.category_confidence || 0), Number($json.extract_confidence || 0), Number($json.confidence || 0), $json.classification_state || 'Classified', $json.needs_review ? 1 : 0);\n  db.prepare(`INSERT OR REPLACE INTO cache_entries (file_hash, capture_id, cached_parse_json, cached_classify_json, cached_extract_json, api_version) VALUES (?, ?, ?, ?, ?, ?)`).run($json.file_hash, $json.capture_id, JSON.stringify({ parsed_markdown: $json.parsed_markdown, layout_blocks: $json.layout_blocks || [], parse_confidence: $json.parse_confidence }), JSON.stringify({ doc_type: $json.doc_type, category_confidence: $json.category_confidence, category_candidates: $json.category_candidates || [], classification_state: $json.classification_state }), JSON.stringify($json), 'phase3-n8n');\n  db.exec('COMMIT');\n  return [{ json: { ...$json, status: 'ready', cache_hit: false, processing_log: [...$json.processing_log, 'indexed', 'ready'] } }];\n} catch (error) {\n  try { db.exec('ROLLBACK'); } catch (_) {}\n  return [{ json: { ...$json, status: 'failed', error_code: 'sqlite_write_failed', error_message: error.message, processing_log: [...$json.processing_log, 'sqlite_failed'] } }];\n} finally {\n  db.close();\n}"
+      },
+      "id": "c85fcff0-ff02-48ef-b8c0-362f282498f3",
+      "name": "SQLite Index Write",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1420, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "f90601c4-bb8a-48af-96f0-69e6a071661f",
+      "name": "Respond image-upload",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1660, -120]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "question-submit",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "fdb7df1b-7df6-4360-b990-7478a730e27d",
+      "name": "Webhook - question-submit",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-980, 260],
+      "webhookId": "odiduji-question-submit"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nlet DatabaseSync;\ntry {\n  ({ DatabaseSync } = require('node:sqlite'));\n} catch (error) {\n  return [{ json: { status: 'failed', error_code: 'sqlite_read_unavailable', error_message: 'node:sqlite is not available in this n8n runtime' } }];\n}\nconst body = $json.body || $json;\nconst dbPath = $env.ODIDUJI_DB_PATH || '/database/odiduji.sqlite';\nconst docTypes = new Set(['notice', 'assignment', 'scholarship', 'receipt', 'place_link', 'noise']);\nconst relaxationOptions = ['date_range_expand_7d', 'search_all_doc_type', 'include_needs_review'];\nfunction planQuery(rawQuery) {\n  const query = String(rawQuery || '').trim();\n  const plan = { query_intent: 'search_cards', target_doc_type: null, filters: {}, sort_rule: 'confidence_desc', requested_fields: ['title', 'deadline', 'amount', 'required_submission', 'location_name'], answer_policy: { mode: 'evidence_bound', allow_free_generation: false, require_evidence_text: true } };\n  if (query.includes('영수증') || query.includes('금액') || query.includes('원')) {\n    plan.target_doc_type = 'receipt';\n    plan.sort_rule = 'amount_desc';\n    if (query.includes('2만')) plan.filters.amount_min = 20000;\n    else if (query.includes('만원')) plan.filters.amount_min = 10000;\n    plan.requested_fields = ['title', 'amount', 'currency', 'location_name'];\n  } else if (query.includes('장학')) {\n    plan.target_doc_type = 'scholarship';\n    plan.sort_rule = 'deadline_asc';\n    plan.requested_fields = ['title', 'deadline', 'amount', 'required_submission', 'location_name'];\n  } else if (query.includes('과제') || query.includes('제출') || query.includes('마감')) {\n    plan.target_doc_type = 'assignment';\n    plan.sort_rule = 'deadline_asc';\n    plan.requested_fields = ['title', 'deadline', 'required_submission'];\n    if (query.includes('이번 주')) plan.filters.deadline_bucket = 'this_week';\n  } else if (query.includes('장소') || query.includes('주소')) {\n    plan.target_doc_type = 'place_link';\n    plan.requested_fields = ['title', 'location_name', 'address'];\n  } else {\n    plan.query_intent = 'unsupported_query';\n  }\n  return plan;\n}\nfunction validatePlan(plan) {\n  if (plan.target_doc_type && !docTypes.has(plan.target_doc_type)) return 'invalid_doc_type';\n  if (!['deadline_asc', 'amount_desc', 'confidence_desc'].includes(plan.sort_rule)) return 'invalid_sort_rule';\n  for (const key of Object.keys(plan.filters || {})) {\n    if (!['amount_min', 'deadline_bucket', 'include_needs_review'].includes(key)) return 'invalid_filter_key';\n  }\n  return null;\n}\nfunction buildWhere(plan, fallback) {\n  const clauses = ['1 = 1'];\n  const params = [];\n  if (plan.target_doc_type && !fallback) {\n    clauses.push('mi.doc_type = ?');\n    params.push(plan.target_doc_type);\n  } else if (plan.target_doc_type && fallback) {\n    clauses.push(\"(mi.doc_type = ? OR mi.doc_type != 'noise')\");\n    params.push(plan.target_doc_type);\n  }\n  if (plan.filters.amount_min != null) {\n    clauses.push('mi.amount >= ?');\n    params.push(plan.filters.amount_min);\n  }\n  if (plan.filters.deadline_bucket && !fallback) {\n    clauses.push('(mi.deadline_bucket = ? OR mi.deadline IS NOT NULL)');\n    params.push(plan.filters.deadline_bucket);\n  }\n  return { where: clauses.join(' AND '), params };\n}\nfunction orderBy(sortRule) {\n  if (sortRule === 'deadline_asc') return 'mi.deadline IS NULL ASC, mi.deadline ASC, mi.confidence DESC';\n  if (sortRule === 'amount_desc') return 'mi.amount IS NULL ASC, mi.amount DESC, mi.confidence DESC';\n  return 'mi.confidence DESC, mi.index_record_id ASC';\n}\nfunction parseJson(value, fallback) {\n  try { return JSON.parse(value || ''); } catch (_) { return fallback; }\n}\nfunction cardFromRow(row) {\n  const evidence = parseJson(row.evidence_text_json, {});\n  const fields = {};\n  for (const field of ['deadline', 'amount', 'currency', 'required_submission', 'source', 'location_name', 'address']) {\n    if (row[field] !== null && row[field] !== undefined) fields[field] = row[field];\n  }\n  const cited = {};\n  for (const [key, value] of Object.entries(evidence || {})) {\n    if (value !== null && value !== '') cited[key] = value;\n  }\n  return { capture_id: row.capture_id, source_image_path: row.source_image_path, doc_type: row.doc_type, title: row.title || row.file_name, fields, confidence: row.confidence, needs_review: Boolean(row.needs_review), classification_state: row.classification_state, evidence_text: cited };\n}\nfunction fetchCandidates(db, plan, limit, offset = 0) {\n  const built = buildWhere(plan, offset > 0);\n  const sql = `SELECT mi.*, cr.source_image_path, cr.file_name FROM metadata_index mi JOIN capture_records cr ON cr.capture_id = mi.capture_id WHERE ${built.where} ORDER BY ${orderBy(plan.sort_rule)} LIMIT ? OFFSET ?`;\n  return db.prepare(sql).all(...built.params, limit, offset).map(cardFromRow);\n}\nfunction hasEvidence(card, requestedFields) {\n  const evidence = card.evidence_text || {};\n  return requestedFields.some((field) => evidence[field]) || Boolean(evidence.title);\n}\nfunction answerFromCards(cards, requestedFields) {\n  const snippets = [];\n  const cited = [];\n  for (const card of cards) {\n    const parts = [];\n    for (const field of requestedFields) {\n      if (card.fields[field] !== undefined && (card.evidence_text[field] || field === 'currency')) {\n        parts.push(`${field}=${card.fields[field]}`);\n        cited.push(`${card.capture_id}.${field}`);\n      }\n    }\n    if (parts.length) snippets.push(`${card.title}: ${parts.join(', ')}`);\n    else if (Object.keys(card.evidence_text || {}).length) {\n      snippets.push(`${card.title}: 근거 문장 있음`);\n      cited.push(`${card.capture_id}.evidence_text`);\n    }\n  }\n  return { answer: snippets.join(' / '), cited_fields: cited };\n}\nconst db = new DatabaseSync(dbPath);\ntry {\n  db.exec('PRAGMA foreign_keys = ON');\n  const action = body.action || 'query';\n  if (action === 'status') {\n    const captureId = body.selected_capture_id || body.capture_id;\n    const row = db.prepare('SELECT capture_id, status, source_image_path FROM capture_records WHERE capture_id = ?').get(captureId);\n    return [{ json: row || { status: 'not_found', capture_id: captureId } }];\n  }\n  if (action === 'correction' || action === 'fallback_select' || action === 'doc_type_override') {\n    const correctionId = `COR-${Date.now()}`;\n    const beforeHash = crypto.createHash('sha256').update(String(body.before_value || '')).digest('hex');\n    const afterHash = crypto.createHash('sha256').update(String(body.after_value || body.corrected_field || '')).digest('hex');\n    db.prepare(`INSERT INTO correction_log (correction_id, query_id, selected_capture_id, previous_rank, corrected_field, before_value_hash, after_value_hash, action, note_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(correctionId, body.query_id || null, body.selected_capture_id || null, body.previous_rank || null, body.corrected_field || body.selected_doc_type || null, beforeHash, afterHash, action === 'doc_type_override' ? 'doc_type_override' : action, JSON.stringify({ stored: 'hash_only' }));\n    return [{ json: { status: 'accepted', correction_id: correctionId } }];\n  }\n  if (action === 'qa_report') {\n    const row = db.prepare('SELECT * FROM test_report ORDER BY generated_at DESC LIMIT 1').get();\n    return [{ json: row || { status: 'missing', report_id: null } }];\n  }\n  const rawQuery = body.raw_query || body.query || '';\n  const queryId = body.query_id || `Q-${Date.now()}`;\n  const queryPlan = planQuery(rawQuery);\n  if (queryPlan.query_intent === 'unsupported_query') {\n    return [{ json: { query_id: queryId, raw_query: rawQuery, query_plan: queryPlan, query_plan_valid: true, answer: '', cards: [], no_answer: true, no_answer_reason: 'unsupported_query_intent', relaxation_options: relaxationOptions, fallback_candidates: [], processing_log: ['received', 'planned', 'no_answer'] } }];\n  }\n  const validationError = validatePlan(queryPlan);\n  if (validationError) {\n    return [{ json: { query_id: queryId, raw_query: rawQuery, query_plan: queryPlan, query_plan_valid: false, validation_error: validationError, no_answer: true, no_answer_reason: 'query_plan_invalid' } }];\n  }\n  const cards = fetchCandidates(db, queryPlan, 3, 0);\n  const evidenceCards = cards.filter((card) => hasEvidence(card, queryPlan.requested_fields));\n  const fallbackCandidates = fetchCandidates(db, queryPlan, 7, 3);\n  if (!evidenceCards.length) {\n    return [{ json: { query_id: queryId, raw_query: rawQuery, query_plan: queryPlan, query_plan_valid: true, answer: '', cards, no_answer: true, no_answer_reason: cards.length ? 'missing_evidence_text' : 'no_candidate', relaxation_options: relaxationOptions, fallback_candidates: fallbackCandidates, processing_log: ['received', 'planned', 'searched', 'no_answer'] } }];\n  }\n  const answer = answerFromCards(evidenceCards, queryPlan.requested_fields);\n  return [{ json: { query_id: queryId, raw_query: rawQuery, query_plan: queryPlan, query_plan_valid: true, answer: answer.answer, cards: evidenceCards, cited_fields: answer.cited_fields, no_answer: false, relaxation_options: [], fallback_candidates: fallbackCandidates, processing_log: ['received', 'planned', 'searched', 'answered'] } }];\n} finally {\n  db.close();\n}"
+      },
+      "id": "df41a31d-2436-4f54-8b6b-59d195ce7400",
+      "name": "Route question action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-740, 260]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "b032409a-bb8d-4c1b-a5d1-2842d0364263",
+      "name": "Respond question-submit",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-500, 260]
+    }
+  ],
+  "connections": {
+    "Webhook - image-upload": {
+      "main": [[{ "node": "Validate JPG PNG and hash", "type": "main", "index": 0 }]]
+    },
+    "Validate JPG PNG and hash": {
+      "main": [[{ "node": "Rejected?", "type": "main", "index": 0 }]]
+    },
+    "Rejected?": {
+      "main": [
+        [{ "node": "Respond rejected upload", "type": "main", "index": 0 }],
+        [{ "node": "Store original capture", "type": "main", "index": 0 }]
+      ]
+    },
+    "Store original capture": {
+      "main": [[{ "node": "Prepare Document Parse", "type": "main", "index": 0 }]]
+    },
+    "Prepare Document Parse": {
+      "main": [[{ "node": "Upstage Document Parse", "type": "main", "index": 0 }]]
+    },
+    "Upstage Document Parse": {
+      "main": [[{ "node": "Normalize Parse Result", "type": "main", "index": 0 }]]
+    },
+    "Normalize Parse Result": {
+      "main": [[{ "node": "Document Classify MVP", "type": "main", "index": 0 }]]
+    },
+    "Document Classify MVP": {
+      "main": [[{ "node": "Schema Router", "type": "main", "index": 0 }]]
+    },
+    "Schema Router": {
+      "main": [[{ "node": "Information Extract MVP", "type": "main", "index": 0 }]]
+    },
+    "Information Extract MVP": {
+      "main": [[{ "node": "SQLite Index Write", "type": "main", "index": 0 }]]
+    },
+    "SQLite Index Write": {
+      "main": [[{ "node": "Respond image-upload", "type": "main", "index": 0 }]]
+    },
+    "Webhook - question-submit": {
+      "main": [[{ "node": "Route question action", "type": "main", "index": 0 }]]
+    },
+    "Route question action": {
+      "main": [[{ "node": "Respond question-submit", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Seoul"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 2,
+  "updatedAt": "2026-05-23T00:00:00.000+09:00",
+  "versionId": "phase-5"
+}

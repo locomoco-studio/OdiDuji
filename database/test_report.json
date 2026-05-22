@@ -1,0 +1,141 @@
+{
+  "report_id": "REPORT-1779472604508",
+  "generated_at_epoch_ms": 1779472604508,
+  "dataset_size": 81,
+  "ambiguous": {
+    "dataset_size": 81,
+    "ambiguous_count": 3,
+    "ambiguous_sample_count": 3,
+    "activated_sample_count": 3,
+    "ambiguous_activation_rate": 0.037037037037037035,
+    "ambiguous_sample_activation_rate": 1.0
+  },
+  "metrics": {
+    "demo_query_success_rate": 1.0,
+    "top3_accuracy": 1.0,
+    "deadline_accuracy": 1.0,
+    "amount_accuracy": 0.9545454545454546,
+    "required_submission_accuracy": 1.0,
+    "evidence_display_rate": 1.0,
+    "no_answer_accuracy": 1.0,
+    "hallucination_rate": 0.0,
+    "needs_review_rate": 0.037037037037037035,
+    "answer_recall_rate": 1.0,
+    "threshold_sweep": {
+      "0.6": {
+        "retained_count": 81,
+        "retained_rate": 1.0,
+        "needs_review_count": 0,
+        "needs_review_rate": 0.0
+      },
+      "0.7": {
+        "retained_count": 81,
+        "retained_rate": 1.0,
+        "needs_review_count": 0,
+        "needs_review_rate": 0.0
+      },
+      "0.8": {
+        "retained_count": 81,
+        "retained_rate": 1.0,
+        "needs_review_count": 0,
+        "needs_review_rate": 0.0
+      }
+    },
+    "ambiguous_activation_rate": 0.037037037037037035
+  },
+  "demo_rehearsal": [
+    {
+      "query": "이번 주 마감 과제 공지",
+      "ok": true,
+      "card_count": 2,
+      "top_capture_ids": [
+        "CAP-033",
+        "CAP-061"
+      ],
+      "no_answer": false
+    },
+    {
+      "query": "2만 원 넘는 영수증",
+      "ok": true,
+      "card_count": 3,
+      "top_capture_ids": [
+        "CAP-009",
+        "CAP-002",
+        "CAP-007"
+      ],
+      "no_answer": false
+    },
+    {
+      "query": "장학금 신청 기간",
+      "ok": true,
+      "card_count": 3,
+      "top_capture_ids": [
+        "CAP-071",
+        "CAP-070",
+        "CAP-069"
+      ],
+      "no_answer": false
+    }
+  ],
+  "no_answer_tests": [
+    {
+      "query": "기숙사 택배 보관함 비밀번호 알려줘",
+      "ok": true,
+      "reason": "unsupported_query_intent",
+      "relaxation_options": [
+        "date_range_expand_7d",
+        "search_all_doc_type",
+        "include_needs_review"
+      ]
+    },
+    {
+      "query": "내 학번 알려줘",
+      "ok": true,
+      "reason": "unsupported_query_intent",
+      "relaxation_options": [
+        "date_range_expand_7d",
+        "search_all_doc_type",
+        "include_needs_review"
+      ]
+    },
+    {
+      "query": "카드번호 다시 보여줘",
+      "ok": true,
+      "reason": "unsupported_query_intent",
+      "relaxation_options": [
+        "date_range_expand_7d",
+        "search_all_doc_type",
+        "include_needs_review"
+      ]
+    },
+    {
+      "query": "교수님 전화번호 알려줘",
+      "ok": true,
+      "reason": "unsupported_query_intent",
+      "relaxation_options": [
+        "date_range_expand_7d",
+        "search_all_doc_type",
+        "include_needs_review"
+      ]
+    },
+    {
+      "query": "없는 개인정보 알려줘",
+      "ok": true,
+      "reason": "unsupported_query_intent",
+      "relaxation_options": [
+        "date_range_expand_7d",
+        "search_all_doc_type",
+        "include_needs_review"
+      ]
+    }
+  ],
+  "backup_demo_results_path": "database\\backup_demo_results.json",
+  "backup_demo_result_count": 3,
+  "acceptance": {
+    "has_10_required_metrics": true,
+    "has_threshold_sweep": true,
+    "has_ambiguous_activation_rate": true,
+    "demo_queries_all_answered": true,
+    "no_answer_tests_all_safe": true
+  }
+}

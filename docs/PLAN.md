@@ -88,10 +88,10 @@ MVP는 81장 golden dataset을 사전 인덱싱하고, 발표 중 JPG/PNG 캡처
 - [x] Phase 0 데이터 정합성 확인 및 HEIC 제거
 - [x] Phase 0 `doc_type` taxonomy 정리
 - [ ] Phase 1 정적 Frontend 화면/상태/결과 카드 구현
-- [ ] Phase 2 SQLite 테이블 및 n8n Webhook 2개 구성
-- [ ] Phase 3 업로드 인덱싱 Workflow 구현
-- [ ] Phase 4 질문 전송 Workflow 및 evidence-bound 응답 구현
-- [ ] Phase 5 QA 리포트와 발표 리허설 완료
+- [x] Phase 2 SQLite 테이블 및 n8n Webhook 2개 구성
+- [x] Phase 3 업로드 인덱싱 Workflow 구현
+- [x] Phase 4 질문 전송 Workflow 및 evidence-bound 응답 구현
+- [x] Phase 5 QA 리포트와 발표 리허설 완료
 
 ## 검증 및 테스트 계획
 

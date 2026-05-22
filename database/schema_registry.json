@@ -1,0 +1,40 @@
+{
+  "notice": {
+    "schema_id": "notice_v1",
+    "required": ["title", "source", "evidence_text"],
+    "optional": [
+      "created_date",
+      "event_date",
+      "deadline",
+      "deadline_bucket",
+      "has_submission",
+      "location_name",
+      "address"
+    ]
+  },
+  "assignment": {
+    "schema_id": "assignment_v1",
+    "required": ["title", "deadline", "evidence_text"],
+    "optional": ["created_date", "required_submission", "has_submission", "source"]
+  },
+  "scholarship": {
+    "schema_id": "scholarship_v1",
+    "required": ["title", "source", "evidence_text"],
+    "optional": ["deadline", "amount", "currency", "required_submission", "location_name"]
+  },
+  "receipt": {
+    "schema_id": "receipt_v1",
+    "required": ["title", "amount", "currency", "evidence_text"],
+    "optional": ["created_date", "merchant", "location_name", "address"]
+  },
+  "place_link": {
+    "schema_id": "place_link_v1",
+    "required": ["title", "evidence_text"],
+    "optional": ["source", "event_date", "location_name", "address"]
+  },
+  "noise": {
+    "schema_id": "noise_v1",
+    "required": ["doc_type"],
+    "optional": ["title", "source", "evidence_text"]
+  }
+}

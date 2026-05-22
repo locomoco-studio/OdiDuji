@@ -3,3 +3,8 @@ n8n_data/
 node_modules/
 .docusaurus/
 build/
+__pycache__/
+*.pyc
+database/*.sqlite
+database/*.sqlite-shm
+database/*.sqlite-wal

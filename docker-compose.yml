@@ -14,6 +14,12 @@ services:
       - N8N_RUNNERS_ENABLED=true
       - GENERIC_TIMEZONE=Asia/Seoul
       - TZ=Asia/Seoul
+      - ODIDUJI_DB_PATH=/database/odiduji.sqlite
+      - ODIDUJI_CAPTURE_DIR=/static/captures
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto,fs,path,node:sqlite
     volumes:
       - ./n8n_data:/home/node/.n8n
+      - ./database:/database
+      - ./static:/static
+      - ./dataset:/dataset:ro
     restart: unless-stopped
