@@ -1,6 +1,6 @@
 [
   {
-    "query_id": "Q-1779472604503",
+    "query_id": "Q-1779476725791",
     "raw_query": "이번 주 마감 과제 공지",
     "query_plan": {
       "query_intent": "search_cards",
@@ -249,7 +249,7 @@
     ]
   },
   {
-    "query_id": "Q-1779472604504",
+    "query_id": "Q-1779476725794",
     "raw_query": "2만 원 넘는 영수증",
     "query_plan": {
       "query_intent": "search_cards",
@@ -546,7 +546,7 @@
     ]
   },
   {
-    "query_id": "Q-1779472604505",
+    "query_id": "Q-1779476725796",
     "raw_query": "장학금 신청 기간",
     "query_plan": {
       "query_intent": "search_cards",

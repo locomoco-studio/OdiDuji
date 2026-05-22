@@ -41,6 +41,16 @@
                 <p>JPG 또는 PNG 한 장을 업로드하면 n8n 워크플로우가 문서 분석을 시작합니다.</p>
               </div>
 
+              <label class="webhook-config" for="webhookBaseUrl">
+                <span>Webhook base URL</span>
+                <input
+                  id="webhookBaseUrl"
+                  type="url"
+                  value="http://127.0.0.1:5678/webhook"
+                  spellcheck="false"
+                />
+              </label>
+
               <div class="dropzone" id="dropzone">
                 <input
                   id="imageInput"

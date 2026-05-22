@@ -2,6 +2,7 @@ const tabs = document.querySelectorAll(".tab-button");
 const panels = document.querySelectorAll(".panel");
 const fileInput = document.querySelector("#imageInput");
 const fileButton = document.querySelector("#fileButton");
+const webhookBaseUrlInput = document.querySelector("#webhookBaseUrl");
 const dropzone = document.querySelector("#dropzone");
 const previewGrid = document.querySelector("#previewGrid");
 const successStatus = document.querySelector("#successStatus");
@@ -20,6 +21,7 @@ const evidenceText = document.querySelector("#evidenceText");
 const allowedTypes = new Set(["image/jpeg", "image/png"]);
 const allowedExtensions = [".jpg", ".jpeg", ".png"];
 const maxFileSize = 10 * 1024 * 1024;
+const webhookBaseUrlStorageKey = "odiduji.webhookBaseUrl";
 
 const stateViews = {
   empty: emptyState,
@@ -59,6 +61,33 @@ function setStatus(type, message) {
   }
 }
 
+function normalizeWebhookBaseUrl(value) {
+  return value
+    .trim()
+    .replace("http://localhost:", "http://127.0.0.1:")
+    .replace(/\/+$/, "");
+}
+
+function getWebhookBaseUrl() {
+  return normalizeWebhookBaseUrl(webhookBaseUrlInput.value || "http://127.0.0.1:5678/webhook");
+}
+
+function getUploadWebhookUrl() {
+  const baseUrl = getWebhookBaseUrl();
+  if (baseUrl.endsWith("/image-upload")) {
+    return baseUrl;
+  }
+  return `${baseUrl}/image-upload`;
+}
+
+function getQuestionWebhookUrl() {
+  const baseUrl = getWebhookBaseUrl();
+  if (baseUrl.endsWith("/question-submit")) {
+    return baseUrl;
+  }
+  return `${baseUrl}/question-submit`;
+}
+
 function showResultState(stateName) {
   Object.entries(stateViews).forEach(([name, element]) => {
     element.hidden = name !== stateName;
@@ -84,6 +113,181 @@ function validateFile(file) {
   }
 
   return null;
+}
+
+function updatePreviewMeta(card, message, type = "info") {
+  const meta = card.querySelector(".preview-meta");
+  if (!meta) return;
+  meta.textContent = message;
+  meta.dataset.type = type;
+}
+
+async function uploadImage(file, card) {
+  const formData = new FormData();
+  formData.append("image", file, file.name);
+
+  updatePreviewMeta(card, "webhook 전송 중", "info");
+  setStatus("success", "Webhook 전송 중");
+
+  let response;
+  try {
+    response = await fetch(getUploadWebhookUrl(), {
+      method: "POST",
+      body: formData,
+    });
+  } catch (error) {
+    updatePreviewMeta(card, "webhook 연결 실패", "error");
+    setStatus("error", `webhook_connection_failed: ${getUploadWebhookUrl()}`);
+    return;
+  }
+
+  const responseText = await response.text();
+  let payload = null;
+  try {
+    payload = responseText ? JSON.parse(responseText) : null;
+  } catch (_) {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    updatePreviewMeta(card, `HTTP ${response.status}`, "error");
+    setStatus("error", `webhook_http_${response.status}`);
+    return;
+  }
+
+  if (!payload) {
+    updatePreviewMeta(card, "응답 JSON 없음", "error");
+    setStatus("error", "invalid_webhook_response");
+    return;
+  }
+
+  if (payload.status === "rejected" || payload.validation_status === "rejected") {
+    const reason = payload.reject_reason || "upload_rejected";
+    updatePreviewMeta(card, reason, "error");
+    setStatus("error", reason);
+    return;
+  }
+
+  const captureId = payload.capture_id || "capture_id 없음";
+  const cacheLabel = payload.cache_hit ? "cache_hit" : payload.status || "received";
+  updatePreviewMeta(card, `${captureId} · ${cacheLabel}`, "success");
+  setStatus("success", `${captureId} · ${cacheLabel}`);
+}
+
+function createElement(tag, className, textContent) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (textContent !== undefined) element.textContent = textContent;
+  return element;
+}
+
+function formatConfidence(card) {
+  if (card.needs_review) return "확인 필요";
+  const confidence = Number(card.confidence);
+  return Number.isFinite(confidence) ? confidence.toFixed(2) : "-";
+}
+
+function evidenceSummary(card) {
+  const evidence = card.evidence_text || {};
+  const first = Object.values(evidence).find((value) => value !== null && value !== "");
+  return first || "근거 문장 없음";
+}
+
+function renderResultCards(payload) {
+  if (payload.no_answer) {
+    showResultState("noAnswer");
+    evidenceText.textContent = payload.no_answer_reason || "no_answer";
+    return;
+  }
+
+  const cards = payload.cards || [];
+  results.innerHTML = "";
+
+  const titleRow = createElement("div", "section-title-row");
+  const titleGroup = createElement("div");
+  titleGroup.append(
+    createElement("span", "eyebrow", "Evidence-bound answer"),
+    createElement("h2", null, `${cards.length}건의 결과 카드`),
+  );
+  titleRow.append(titleGroup, createElement("span", "status-pill success", "no hallucination"));
+  results.append(titleRow);
+
+  if (payload.answer) {
+    const answer = createElement("article", "surface empty-state");
+    answer.append(createElement("strong", null, payload.answer));
+    results.append(answer);
+  }
+
+  cards.forEach((card) => {
+    const article = createElement("article", `result-card${card.needs_review ? " needs-review" : ""}`);
+    const thumb = createElement("button", card.needs_review ? "thumb yellow" : "thumb");
+    thumb.type = "button";
+    thumb.append(createElement("span", null, card.doc_type || "card"));
+    thumb.addEventListener("click", () => {
+      evidenceText.textContent = evidenceSummary(card);
+    });
+
+    const content = createElement("div", "result-content");
+    const header = createElement("div", "result-header");
+    const heading = createElement("div");
+    heading.append(
+      createElement("span", "doc-type", card.doc_type || "unknown"),
+      createElement("h3", null, card.title || card.capture_id || "Untitled"),
+    );
+    header.append(heading, createElement("span", card.needs_review ? "confidence review" : "confidence", formatConfidence(card)));
+
+    const dl = document.createElement("dl");
+    const fields = card.fields || {};
+    Object.entries(fields).forEach(([key, value]) => {
+      if (value === null || value === "") return;
+      const row = createElement("div");
+      row.append(createElement("dt", null, key), createElement("dd", null, String(value)));
+      dl.append(row);
+    });
+    const evidenceRow = createElement("div");
+    evidenceRow.append(createElement("dt", null, "근거"), createElement("dd", null, evidenceSummary(card)));
+    dl.append(evidenceRow);
+
+    content.append(header, dl);
+    article.append(thumb, content);
+    results.append(article);
+  });
+
+  evidenceText.textContent = cards[0] ? evidenceSummary(cards[0]) : "결과 카드 없음";
+  showResultState("results");
+}
+
+async function submitQuestion(query) {
+  showResultState("empty");
+  emptyState.querySelector("strong").textContent = "질문을 전송하는 중입니다.";
+
+  let response;
+  try {
+    response = await fetch(getQuestionWebhookUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ raw_query: query }),
+    });
+  } catch (error) {
+    emptyState.querySelector("strong").textContent = "질문 웹훅 연결 실패";
+    emptyState.querySelector("p").textContent = getQuestionWebhookUrl();
+    return;
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload) {
+    emptyState.querySelector("strong").textContent = `질문 응답 오류 ${response.status}`;
+    emptyState.querySelector("p").textContent = "n8n Webhook 응답을 확인하세요.";
+    return;
+  }
+
+  if (payload.status === "failed") {
+    emptyState.querySelector("strong").textContent = payload.error_code || "workflow_failed";
+    emptyState.querySelector("p").textContent = payload.error_message || "n8n workflow failed";
+    return;
+  }
+
+  renderResultCards(payload);
 }
 
 function addPreview(file) {
@@ -119,9 +323,14 @@ function addPreview(file) {
     }
   });
 
-  card.append(image, removeButton);
+  const meta = document.createElement("span");
+  meta.className = "preview-meta";
+  meta.textContent = "업로드 대기";
+  meta.dataset.type = "info";
+
+  card.append(image, removeButton, meta);
   previewGrid.prepend(card);
-  setStatus("success", "upload_job_id 생성됨 · status=received");
+  uploadImage(file, card);
 }
 
 function handleFiles(files) {
@@ -137,6 +346,16 @@ fileButton.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", (event) => {
   handleFiles(event.target.files);
   event.target.value = "";
+});
+
+const savedWebhookBaseUrl = localStorage.getItem(webhookBaseUrlStorageKey);
+if (savedWebhookBaseUrl) {
+  webhookBaseUrlInput.value = savedWebhookBaseUrl;
+}
+
+webhookBaseUrlInput.addEventListener("change", () => {
+  webhookBaseUrlInput.value = getWebhookBaseUrl();
+  localStorage.setItem(webhookBaseUrlStorageKey, webhookBaseUrlInput.value);
 });
 
 ["dragenter", "dragover"].forEach((eventName) => {
@@ -162,7 +381,7 @@ quickQuestions.forEach((button) => {
     quickQuestions.forEach((item) => item.classList.remove("is-selected"));
     button.classList.add("is-selected");
     questionInput.value = button.dataset.question;
-    showResultState(button.dataset.demo);
+    submitQuestion(button.dataset.question);
   });
 });
 
@@ -191,5 +410,5 @@ questionForm.addEventListener("submit", (event) => {
   quickQuestions.forEach((item) => {
     item.classList.toggle("is-selected", item.dataset.question === query);
   });
-  showResultState("results");
+  submitQuestion(query);
 });

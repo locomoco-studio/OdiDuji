@@ -8,3 +8,4 @@ __pycache__/
 database/*.sqlite
 database/*.sqlite-shm
 database/*.sqlite-wal
+static/captures/CAP-LIVE-*

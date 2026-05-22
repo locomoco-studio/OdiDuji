@@ -11,12 +11,12 @@ services:
     environment:
       - N8N_PAYLOAD_SIZE_MAX=32
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-      - N8N_RUNNERS_ENABLED=true
       - GENERIC_TIMEZONE=Asia/Seoul
       - TZ=Asia/Seoul
       - ODIDUJI_DB_PATH=/database/odiduji.sqlite
       - ODIDUJI_CAPTURE_DIR=/static/captures
-      - NODE_FUNCTION_ALLOW_BUILTIN=crypto,fs,path,node:sqlite
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto,fs,path,sqlite,node:sqlite
+      - NODE_FUNCTION_ALLOW_EXTERNAL=sqlite3
     volumes:
       - ./n8n_data:/home/node/.n8n
       - ./database:/database
