@@ -2,7 +2,8 @@ const tabs = document.querySelectorAll(".tab-button");
 const panels = document.querySelectorAll(".panel");
 const fileInput = document.querySelector("#imageInput");
 const fileButton = document.querySelector("#fileButton");
-const webhookBaseUrlInput = document.querySelector("#webhookBaseUrl");
+const uploadWebhookUrlInput = document.querySelector("#uploadWebhookUrl");
+const questionWebhookUrlInput = document.querySelector("#questionWebhookUrl");
 const dropzone = document.querySelector("#dropzone");
 const previewGrid = document.querySelector("#previewGrid");
 const successStatus = document.querySelector("#successStatus");
@@ -21,7 +22,12 @@ const evidenceText = document.querySelector("#evidenceText");
 const allowedTypes = new Set(["image/jpeg", "image/png"]);
 const allowedExtensions = [".jpg", ".jpeg", ".png"];
 const maxFileSize = 10 * 1024 * 1024;
-const webhookBaseUrlStorageKey = "odiduji.webhookBaseUrl";
+const legacyWebhookBaseUrlStorageKey = "odiduji.webhookBaseUrl";
+const uploadWebhookUrlStorageKey = "odiduji.uploadWebhookUrl";
+const questionWebhookUrlStorageKey = "odiduji.questionWebhookUrl";
+const defaultWebhookBaseUrl = "http://127.0.0.1:5678/webhook";
+const defaultUploadWebhookUrl = `${defaultWebhookBaseUrl}/image-upload`;
+const defaultQuestionWebhookUrl = `${defaultWebhookBaseUrl}/question-submit`;
 
 const stateViews = {
   empty: emptyState,
@@ -61,31 +67,31 @@ function setStatus(type, message) {
   }
 }
 
-function normalizeWebhookBaseUrl(value) {
-  return value
+function normalizeWebhookUrl(value, endpoint) {
+  const fallback = endpoint === "image-upload" ? defaultUploadWebhookUrl : defaultQuestionWebhookUrl;
+  const otherEndpoint = endpoint === "image-upload" ? "question-submit" : "image-upload";
+  const rawUrl = (value || fallback)
     .trim()
     .replace("http://localhost:", "http://127.0.0.1:")
     .replace(/\/+$/, "");
-}
 
-function getWebhookBaseUrl() {
-  return normalizeWebhookBaseUrl(webhookBaseUrlInput.value || "http://127.0.0.1:5678/webhook");
+  if (!rawUrl) return fallback;
+  if (rawUrl.endsWith(`/${endpoint}`)) return rawUrl;
+  if (rawUrl.endsWith(`/${otherEndpoint}`)) {
+    return rawUrl.replace(new RegExp(`/${otherEndpoint}$`), `/${endpoint}`);
+  }
+  if (rawUrl.endsWith("/webhook") || rawUrl.endsWith("/webhook-test")) {
+    return `${rawUrl}/${endpoint}`;
+  }
+  return rawUrl;
 }
 
 function getUploadWebhookUrl() {
-  const baseUrl = getWebhookBaseUrl();
-  if (baseUrl.endsWith("/image-upload")) {
-    return baseUrl;
-  }
-  return `${baseUrl}/image-upload`;
+  return normalizeWebhookUrl(uploadWebhookUrlInput.value, "image-upload");
 }
 
 function getQuestionWebhookUrl() {
-  const baseUrl = getWebhookBaseUrl();
-  if (baseUrl.endsWith("/question-submit")) {
-    return baseUrl;
-  }
-  return `${baseUrl}/question-submit`;
+  return normalizeWebhookUrl(questionWebhookUrlInput.value, "question-submit");
 }
 
 function showResultState(stateName) {
@@ -261,12 +267,14 @@ async function submitQuestion(query) {
   showResultState("empty");
   emptyState.querySelector("strong").textContent = "질문을 전송하는 중입니다.";
 
+  const body = new FormData();
+  body.append("raw_query", query);
+
   let response;
   try {
     response = await fetch(getQuestionWebhookUrl(), {
       method: "POST",
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ raw_query: query }),
+      body,
     });
   } catch (error) {
     emptyState.querySelector("strong").textContent = "질문 웹훅 연결 실패";
@@ -348,14 +356,21 @@ fileInput.addEventListener("change", (event) => {
   event.target.value = "";
 });
 
-const savedWebhookBaseUrl = localStorage.getItem(webhookBaseUrlStorageKey);
-if (savedWebhookBaseUrl) {
-  webhookBaseUrlInput.value = savedWebhookBaseUrl;
-}
+const legacyWebhookBaseUrl = localStorage.getItem(legacyWebhookBaseUrlStorageKey);
+const savedUploadWebhookUrl = localStorage.getItem(uploadWebhookUrlStorageKey);
+const savedQuestionWebhookUrl = localStorage.getItem(questionWebhookUrlStorageKey);
 
-webhookBaseUrlInput.addEventListener("change", () => {
-  webhookBaseUrlInput.value = getWebhookBaseUrl();
-  localStorage.setItem(webhookBaseUrlStorageKey, webhookBaseUrlInput.value);
+uploadWebhookUrlInput.value = normalizeWebhookUrl(savedUploadWebhookUrl || legacyWebhookBaseUrl || defaultUploadWebhookUrl, "image-upload");
+questionWebhookUrlInput.value = normalizeWebhookUrl(savedQuestionWebhookUrl || legacyWebhookBaseUrl || defaultQuestionWebhookUrl, "question-submit");
+
+uploadWebhookUrlInput.addEventListener("change", () => {
+  uploadWebhookUrlInput.value = getUploadWebhookUrl();
+  localStorage.setItem(uploadWebhookUrlStorageKey, uploadWebhookUrlInput.value);
+});
+
+questionWebhookUrlInput.addEventListener("change", () => {
+  questionWebhookUrlInput.value = getQuestionWebhookUrl();
+  localStorage.setItem(questionWebhookUrlStorageKey, questionWebhookUrlInput.value);
 });
 
 ["dragenter", "dragover"].forEach((eventName) => {

@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 DB_PATH = Path("database/odiduji.sqlite")
-WORKFLOW_PATH = Path("workflows/odiduji.json")
+IMAGE_WORKFLOW_PATH = Path("workflows/image-upload.json")
 SAMPLE_IMAGE = Path("dataset/img_001.jpg")
 
 PHASE3_NODE_NAMES = {
@@ -25,7 +25,7 @@ PHASE3_NODE_NAMES = {
 
 
 def verify_workflow() -> dict:
-    workflow = json.loads(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    workflow = json.loads(IMAGE_WORKFLOW_PATH.read_text(encoding="utf-8"))
     nodes = workflow.get("nodes", [])
     node_names = {node.get("name") for node in nodes}
     webhooks = [
@@ -36,7 +36,8 @@ def verify_workflow() -> dict:
     paths = sorted(node.get("parameters", {}).get("path") for node in webhooks)
     missing = sorted(PHASE3_NODE_NAMES - node_names)
     return {
-        "ok": not missing and paths == ["image-upload", "question-submit"],
+        "ok": not missing and paths == ["image-upload"],
+        "workflow_file": str(IMAGE_WORKFLOW_PATH),
         "missing_phase3_nodes": missing,
         "trigger_webhook_count": len(webhooks),
         "paths": paths,

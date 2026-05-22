@@ -9,7 +9,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 DB_PATH = Path("database/odiduji.sqlite")
-WORKFLOW_PATH = Path("workflows/odiduji.json")
+QUESTION_WORKFLOW_PATH = Path("workflows/question-submit.json")
 
 DEMO_QUERIES = [
     "이번 주 마감 과제 공지",
@@ -110,7 +110,7 @@ def verify_correction_log() -> dict:
 
 
 def verify_workflow() -> dict:
-    workflow = json.loads(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    workflow = json.loads(QUESTION_WORKFLOW_PATH.read_text(encoding="utf-8"))
     webhooks = [
         node
         for node in workflow.get("nodes", [])
@@ -122,14 +122,14 @@ def verify_workflow() -> dict:
     )
     js_code = route_node.get("parameters", {}).get("jsCode", "") if route_node else ""
     checks = {
-        "two_webhooks": sorted(node.get("parameters", {}).get("path") for node in webhooks)
-        == ["image-upload", "question-submit"],
+        "question_webhook": sorted(node.get("parameters", {}).get("path") for node in webhooks)
+        == ["question-submit"],
         "sqlite_query": "FROM metadata_index" in js_code,
         "correction_log": "correction_log" in js_code,
         "fallback": "fallback_candidates" in js_code,
         "no_answer": "no_answer_reason" in js_code,
     }
-    return {"ok": all(checks.values()), "checks": checks}
+    return {"ok": all(checks.values()), "workflow_file": str(QUESTION_WORKFLOW_PATH), "checks": checks}
 
 
 def main() -> None:

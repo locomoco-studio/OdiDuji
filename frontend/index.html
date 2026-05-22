@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>오디두지</title>
+    <title>어디두지</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -12,7 +12,7 @@
         <div class="brand-lockup">
           <div class="brand-mark" aria-hidden="true">O</div>
           <div>
-            <h1>오디두지</h1>
+            <h1>어디두지</h1>
             <p>대학생 캡처 속 마감, 금액, 제출물을 근거와 함께 찾습니다.</p>
           </div>
         </div>
@@ -38,15 +38,18 @@
               <div class="section-heading">
                 <span class="eyebrow">Webhook 1</span>
                 <h2 id="uploadTitle">캡처 이미지 등록</h2>
-                <p>JPG 또는 PNG 한 장을 업로드하면 n8n 워크플로우가 문서 분석을 시작합니다.</p>
+                <p>
+                  JPG 또는 PNG 한 장을 업로드하면 n8n 워크플로우가 문서 분석을
+                  시작합니다.
+                </p>
               </div>
 
-              <label class="webhook-config" for="webhookBaseUrl">
-                <span>Webhook base URL</span>
+              <label class="webhook-config" for="uploadWebhookUrl">
+                <span>Image upload webhook URL</span>
                 <input
-                  id="webhookBaseUrl"
+                  id="uploadWebhookUrl"
                   type="url"
-                  value="http://127.0.0.1:5678/webhook"
+                  value="http://127.0.0.1:5678/webhook/image-upload"
                   spellcheck="false"
                 />
               </label>
@@ -67,7 +70,9 @@
                 <button class="primary-button" type="button" id="fileButton">
                   파일 선택
                 </button>
-                <span class="helper-text">허용: JPG, PNG · 최대 10MB · HEIC 제외</span>
+                <span class="helper-text"
+                  >허용: JPG, PNG · 최대 10MB · HEIC 제외</span
+                >
               </div>
 
               <div class="status-row" aria-live="polite">
@@ -79,7 +84,11 @@
                 </span>
               </div>
 
-              <section class="preview-grid" id="previewGrid" aria-label="업로드 미리보기"></section>
+              <section
+                class="preview-grid"
+                id="previewGrid"
+                aria-label="업로드 미리보기"
+              ></section>
             </section>
 
             <aside class="surface state-board" aria-labelledby="pipelineTitle">
@@ -149,8 +158,21 @@
               <div class="section-heading">
                 <span class="eyebrow">Webhook 2</span>
                 <h2 id="questionTitle">캡처에 질문하기</h2>
-                <p>정해진 문서 근거 안에서만 답하고, 근거가 부족하면 no-answer로 표시합니다.</p>
+                <p>
+                  정해진 문서 근거 안에서만 답하고, 근거가 부족하면 no-answer로
+                  표시합니다.
+                </p>
               </div>
+
+              <label class="webhook-config" for="questionWebhookUrl">
+                <span>Question submit webhook URL</span>
+                <input
+                  id="questionWebhookUrl"
+                  type="url"
+                  value="http://127.0.0.1:5678/webhook/question-submit"
+                  spellcheck="false"
+                />
+              </label>
 
               <form class="search-row" id="questionForm">
                 <input
@@ -159,26 +181,46 @@
                   placeholder="이번 주 놓치면 안 되는 마감이 뭐야?"
                   autocomplete="off"
                 />
-                <button class="primary-button search-button" type="submit">검색</button>
+                <button class="primary-button search-button" type="submit">
+                  검색
+                </button>
               </form>
 
               <div class="quick-questions" aria-label="빠른 질문">
-                <button type="button" data-question="이번 주 마감 과제 공지" data-demo="results">
+                <button
+                  type="button"
+                  data-question="이번 주 마감 과제 공지"
+                  data-demo="results"
+                >
                   이번 주 마감 과제
                 </button>
-                <button type="button" data-question="2만 원 넘는 영수증" data-demo="fallback">
+                <button
+                  type="button"
+                  data-question="2만 원 넘는 영수증"
+                  data-demo="fallback"
+                >
                   2만 원 넘는 영수증
                 </button>
-                <button type="button" data-question="장학금 신청 기간" data-demo="ambiguous">
+                <button
+                  type="button"
+                  data-question="장학금 신청 기간"
+                  data-demo="ambiguous"
+                >
                   장학금 신청 기간
                 </button>
-                <button type="button" data-question="동아리 뒤풀이 장소 알려줘" data-demo="noAnswer">
+                <button
+                  type="button"
+                  data-question="동아리 뒤풀이 장소 알려줘"
+                  data-demo="noAnswer"
+                >
                   근거 부족 질문
                 </button>
               </div>
 
               <div class="state-switcher" aria-label="결과 상태 예시">
-                <button type="button" data-state="results" class="is-selected">결과</button>
+                <button type="button" data-state="results" class="is-selected">
+                  결과
+                </button>
                 <button type="button" data-state="noAnswer">no-answer</button>
                 <button type="button" data-state="ambiguous">모호분류</button>
                 <button type="button" data-state="fallback">fallback</button>
@@ -189,7 +231,10 @@
               <section class="surface empty-state" id="emptyState">
                 <span class="empty-icon" aria-hidden="true"></span>
                 <strong>질문을 입력하면 결과 카드가 표시됩니다.</strong>
-                <p>결과는 원본 캡처, 추출 필드, confidence, evidence_text를 함께 보여줍니다.</p>
+                <p>
+                  결과는 원본 캡처, 추출 필드, confidence, evidence_text를 함께
+                  보여줍니다.
+                </p>
               </section>
 
               <section class="results" id="results" hidden>
@@ -231,7 +276,11 @@
                 </article>
 
                 <article class="result-card needs-review">
-                  <button class="thumb yellow" type="button" data-source="scholarship">
+                  <button
+                    class="thumb yellow"
+                    type="button"
+                    data-source="scholarship"
+                  >
                     <span>장학</span>
                   </button>
                   <div class="result-content">
@@ -260,10 +309,17 @@
                 </article>
               </section>
 
-              <section class="surface no-answer-state" id="noAnswerState" hidden>
+              <section
+                class="surface no-answer-state"
+                id="noAnswerState"
+                hidden
+              >
                 <span class="state-label">no-answer</span>
                 <h2>근거 문장을 찾지 못했습니다.</h2>
-                <p>질문에 맞는 evidence_text가 없거나 필수 필드가 비어 있어 답변을 생성하지 않았습니다.</p>
+                <p>
+                  질문에 맞는 evidence_text가 없거나 필수 필드가 비어 있어
+                  답변을 생성하지 않았습니다.
+                </p>
                 <div class="relaxation-list">
                   <button type="button">날짜 범위 7일 확장</button>
                   <button type="button">전체 문서 유형에서 검색</button>
@@ -271,10 +327,17 @@
                 </div>
               </section>
 
-              <section class="surface ambiguous-state" id="ambiguousState" hidden>
+              <section
+                class="surface ambiguous-state"
+                id="ambiguousState"
+                hidden
+              >
                 <span class="state-label warning">Classify_Ambiguous</span>
                 <h2>문서 유형을 선택해 주세요.</h2>
-                <p>상위 분류 confidence가 낮아 잘못된 스키마 적용을 막기 위한 확인 단계입니다.</p>
+                <p>
+                  상위 분류 confidence가 낮아 잘못된 스키마 적용을 막기 위한
+                  확인 단계입니다.
+                </p>
                 <div class="candidate-list">
                   <label>
                     <input type="radio" name="docType" checked />
@@ -289,13 +352,18 @@
                     assignment <span>0.51</span>
                   </label>
                 </div>
-                <button class="primary-button" type="button">선택한 유형으로 재추출</button>
+                <button class="primary-button" type="button">
+                  선택한 유형으로 재추출
+                </button>
               </section>
 
               <section class="surface fallback-state" id="fallbackState" hidden>
                 <span class="state-label">Top-3 fallback</span>
                 <h2>상위 3건에 정답이 없을 수 있습니다.</h2>
-                <p>후보 4~10번을 열어보고 직접 정답 캡처를 선택하면 correction_log에 남깁니다.</p>
+                <p>
+                  후보 4~10번을 열어보고 직접 정답 캡처를 선택하면
+                  correction_log에 남깁니다.
+                </p>
                 <div class="fallback-grid">
                   <button type="button">4 receipt · 0.63</button>
                   <button type="button">5 receipt · 0.58</button>
@@ -305,7 +373,11 @@
               </section>
             </section>
 
-            <aside class="surface source-viewer" id="sourceViewer" aria-label="원본 캡처와 근거">
+            <aside
+              class="surface source-viewer"
+              id="sourceViewer"
+              aria-label="원본 캡처와 근거"
+            >
               <div class="section-heading compact">
                 <span class="eyebrow">Source viewer</span>
                 <h2>원본과 근거</h2>

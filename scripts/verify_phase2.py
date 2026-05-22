@@ -4,7 +4,10 @@ from pathlib import Path
 
 
 DB_PATH = Path("database/odiduji.sqlite")
-WORKFLOW_PATH = Path("workflows/odiduji.json")
+WORKFLOW_PATHS = [
+    Path("workflows/image-upload.json"),
+    Path("workflows/question-submit.json"),
+]
 
 REQUIRED_TABLES = {
     "capture_records",
@@ -54,18 +57,25 @@ def verify_sqlite() -> dict:
 
 
 def verify_workflow() -> dict:
-    if not WORKFLOW_PATH.exists():
-        return {"ok": False, "error": f"missing {WORKFLOW_PATH}"}
+    missing_files = [str(path) for path in WORKFLOW_PATHS if not path.exists()]
+    if missing_files:
+        return {"ok": False, "error": "missing workflow files", "missing_files": missing_files}
 
-    workflow = json.loads(WORKFLOW_PATH.read_text(encoding="utf-8"))
-    webhooks = [
-        node
-        for node in workflow.get("nodes", [])
-        if node.get("type") == "n8n-nodes-base.webhook"
-    ]
+    webhooks = []
+    workflow_names = []
+    for path in WORKFLOW_PATHS:
+        workflow = json.loads(path.read_text(encoding="utf-8"))
+        workflow_names.append(workflow.get("name"))
+        webhooks.extend(
+            node
+            for node in workflow.get("nodes", [])
+            if node.get("type") == "n8n-nodes-base.webhook"
+        )
     paths = sorted(node.get("parameters", {}).get("path") for node in webhooks)
     return {
         "ok": paths == ["image-upload", "question-submit"],
+        "workflow_files": [str(path) for path in WORKFLOW_PATHS],
+        "workflow_names": workflow_names,
         "trigger_webhook_count": len(webhooks),
         "paths": paths,
     }

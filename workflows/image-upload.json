@@ -1,5 +1,12 @@
 {
-  "name": "OdidujI MVP - Upload Parse Index",
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Seoul"
+  },
+  "staticData": null,
+  "tags": [],
+  "name": "OdidujI MVP - Image Upload",
   "nodes": [
     {
       "parameters": {
@@ -218,51 +225,6 @@
         1660,
         -120
       ]
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "question-submit",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "fdb7df1b-7df6-4360-b990-7478a730e27d",
-      "name": "Webhook - question-submit",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        -980,
-        260
-      ],
-      "webhookId": "odiduji-question-submit"
-    },
-    {
-      "parameters": {
-        "jsCode": "function loadSqlite3() {\n  try { return require('sqlite3'); } catch (firstError) {\n    try { return require('/usr/local/lib/node_modules/n8n/node_modules/.pnpm/sqlite3@5.1.7/node_modules/sqlite3'); }\n    catch (secondError) { throw new Error(`${firstError.message}; ${secondError.message}`); }\n  }\n}\nfunction openDb(dbPath) {\n  const sqlite3 = loadSqlite3();\n  const db = new sqlite3.Database(dbPath);\n  return {\n    exec(sql) { return new Promise((resolve, reject) => db.exec(sql, (error) => error ? reject(error) : resolve())); },\n    run(sql, params = []) { return new Promise((resolve, reject) => db.run(sql, params, function(error) { error ? reject(error) : resolve(this); })); },\n    get(sql, params = []) { return new Promise((resolve, reject) => db.get(sql, params, (error, row) => error ? reject(error) : resolve(row))); },\n    all(sql, params = []) { return new Promise((resolve, reject) => db.all(sql, params, (error, rows) => error ? reject(error) : resolve(rows || []))); },\n    close() { return new Promise((resolve, reject) => db.close((error) => error ? reject(error) : resolve())); },\n  };\n}\nconst crypto = require('crypto');\nconst body = $json.body || $json;\nconst dbPath = $env.ODIDUJI_DB_PATH || '/database/odiduji.sqlite';\nconst docTypes = new Set(['notice', 'assignment', 'scholarship', 'receipt', 'place_link', 'noise']);\nconst relaxationOptions = ['date_range_expand_7d', 'search_all_doc_type', 'include_needs_review'];\nfunction planQuery(rawQuery) {\n  const query = String(rawQuery || '').trim();\n  const plan = { query_intent: 'search_cards', target_doc_type: null, filters: {}, sort_rule: 'confidence_desc', requested_fields: ['title', 'deadline', 'amount', 'required_submission', 'location_name'], answer_policy: { mode: 'evidence_bound', allow_free_generation: false, require_evidence_text: true } };\n  if (query.includes('\\uC601\\uC218\\uC99D') || query.includes('\\uAE08\\uC561') || query.includes('\\uC6D0')) {\n    plan.target_doc_type = 'receipt';\n    plan.sort_rule = 'amount_desc';\n    if (query.includes('2\\uB9CC')) plan.filters.amount_min = 20000;\n    else if (query.includes('\\uB9CC\\uC6D0')) plan.filters.amount_min = 10000;\n    plan.requested_fields = ['title', 'amount', 'currency', 'location_name'];\n  } else if (query.includes('\\uC7A5\\uD559')) {\n    plan.target_doc_type = 'scholarship';\n    plan.sort_rule = 'deadline_asc';\n    plan.requested_fields = ['title', 'deadline', 'amount', 'required_submission', 'location_name'];\n  } else if (query.includes('\\uACFC\\uC81C') || query.includes('\\uC81C\\uCD9C') || query.includes('\\uB9C8\\uAC10')) {\n    plan.target_doc_type = 'assignment';\n    plan.sort_rule = 'deadline_asc';\n    plan.requested_fields = ['title', 'deadline', 'required_submission'];\n    if (query.includes('\\uC774\\uBC88 \\uC8FC')) plan.filters.deadline_bucket = 'this_week';\n  } else if (query.includes('\\uC7A5\\uC18C') || query.includes('\\uC8FC\\uC18C')) {\n    plan.target_doc_type = 'place_link';\n    plan.requested_fields = ['title', 'location_name', 'address'];\n  } else {\n    plan.query_intent = 'unsupported_query';\n  }\n  return plan;\n}\nfunction validatePlan(plan) {\n  if (plan.target_doc_type && !docTypes.has(plan.target_doc_type)) return 'invalid_doc_type';\n  if (!['deadline_asc', 'amount_desc', 'confidence_desc'].includes(plan.sort_rule)) return 'invalid_sort_rule';\n  for (const key of Object.keys(plan.filters || {})) {\n    if (!['amount_min', 'deadline_bucket', 'include_needs_review'].includes(key)) return 'invalid_filter_key';\n  }\n  return null;\n}\nfunction buildWhere(plan, fallback) {\n  const clauses = ['1 = 1'];\n  const params = [];\n  if (plan.target_doc_type && !fallback) {\n    clauses.push('mi.doc_type = ?');\n    params.push(plan.target_doc_type);\n  } else if (plan.target_doc_type && fallback) {\n    clauses.push(\"(mi.doc_type = ? OR mi.doc_type != 'noise')\");\n    params.push(plan.target_doc_type);\n  }\n  if (plan.filters.amount_min != null) {\n    clauses.push('mi.amount >= ?');\n    params.push(plan.filters.amount_min);\n  }\n  if (plan.filters.deadline_bucket && !fallback) {\n    clauses.push('(mi.deadline_bucket = ? OR mi.deadline IS NOT NULL)');\n    params.push(plan.filters.deadline_bucket);\n  }\n  return { where: clauses.join(' AND '), params };\n}\nfunction orderBy(sortRule) {\n  if (sortRule === 'deadline_asc') return 'mi.deadline IS NULL ASC, mi.deadline ASC, mi.confidence DESC';\n  if (sortRule === 'amount_desc') return 'mi.amount IS NULL ASC, mi.amount DESC, mi.confidence DESC';\n  return 'mi.confidence DESC, mi.index_record_id ASC';\n}\nfunction parseJson(value, fallback) {\n  try { return JSON.parse(value || ''); } catch (_) { return fallback; }\n}\nfunction cardFromRow(row) {\n  const evidence = parseJson(row.evidence_text_json, {});\n  const fields = {};\n  for (const field of ['deadline', 'amount', 'currency', 'required_submission', 'source', 'location_name', 'address']) {\n    if (row[field] !== null && row[field] !== undefined) fields[field] = row[field];\n  }\n  const cited = {};\n  for (const [key, value] of Object.entries(evidence || {})) {\n    if (value !== null && value !== '') cited[key] = value;\n  }\n  return { capture_id: row.capture_id, source_image_path: row.source_image_path, doc_type: row.doc_type, title: row.title || row.file_name, fields, confidence: row.confidence, needs_review: Boolean(row.needs_review), classification_state: row.classification_state, evidence_text: cited };\n}\nasync function fetchCandidates(db, plan, limit, offset = 0) {\n  const built = buildWhere(plan, offset > 0);\n  const sql = `SELECT mi.*, cr.source_image_path, cr.file_name FROM metadata_index mi JOIN capture_records cr ON cr.capture_id = mi.capture_id WHERE ${built.where} ORDER BY ${orderBy(plan.sort_rule)} LIMIT ? OFFSET ?`;\n  const rows = await db.all(sql, [...built.params, limit, offset]);\n  return rows.map(cardFromRow);\n}\nfunction hasEvidence(card, requestedFields) {\n  const evidence = card.evidence_text || {};\n  return requestedFields.some((field) => evidence[field]) || Boolean(evidence.title);\n}\nfunction answerFromCards(cards, requestedFields) {\n  const snippets = [];\n  const cited = [];\n  for (const card of cards) {\n    const parts = [];\n    for (const field of requestedFields) {\n      if (card.fields[field] !== undefined && (card.evidence_text[field] || field === 'currency')) {\n        parts.push(`${field}=${card.fields[field]}`);\n        cited.push(`${card.capture_id}.${field}`);\n      }\n    }\n    if (parts.length) snippets.push(`${card.title}: ${parts.join(', ')}`);\n    else if (Object.keys(card.evidence_text || {}).length) {\n      snippets.push(`${card.title}: \\uADFC\\uAC70 \\uBB38\\uC7A5 \\uC788\\uC74C`);\n      cited.push(`${card.capture_id}.evidence_text`);\n    }\n  }\n  return { answer: snippets.join(' / '), cited_fields: cited };\n}\nconst action = body.action || 'query';\nconst rawQuery = body.raw_query || body.query || '';\nconst queryId = body.query_id || `Q-${Date.now()}`;\nconst queryPlan = planQuery(rawQuery);\nif (action === 'query' && queryPlan.query_intent === 'unsupported_query') {\n  return [{ json: { query_id: queryId, raw_query: rawQuery, query_plan: queryPlan, query_plan_valid: true, answer: '', cards: [], no_answer: true, no_answer_reason: 'unsupported_query_intent', relaxation_options: relaxationOptions, fallback_candidates: [], processing_log: ['received', 'planned', 'no_answer'] } }];\n}\nlet db;\ntry {\n  db = openDb(dbPath);\n  await db.exec('PRAGMA foreign_keys = ON');\n  if (action === 'status') {\n    const captureId = body.selected_capture_id || body.capture_id;\n    const row = await db.get('SELECT capture_id, status, source_image_path FROM capture_records WHERE capture_id = ?', [captureId]);\n    await db.close();\n    return [{ json: row || { status: 'not_found', capture_id: captureId } }];\n  }\n  if (action === 'correction' || action === 'fallback_select' || action === 'doc_type_override') {\n    const correctionId = `COR-${Date.now()}`;\n    const beforeHash = crypto.createHash('sha256').update(String(body.before_value || '')).digest('hex');\n    const afterHash = crypto.createHash('sha256').update(String(body.after_value || body.corrected_field || '')).digest('hex');\n    await db.run(`INSERT INTO correction_log (correction_id, query_id, selected_capture_id, previous_rank, corrected_field, before_value_hash, after_value_hash, action, note_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [correctionId, body.query_id || null, body.selected_capture_id || null, body.previous_rank || null, body.corrected_field || body.selected_doc_type || null, beforeHash, afterHash, action === 'doc_type_override' ? 'doc_type_override' : action, JSON.stringify({ stored: 'hash_only' })]);\n    await db.close();\n    return [{ json: { status: 'accepted', correction_id: correctionId } }];\n  }\n  if (action === 'qa_report') {\n    const row = await db.get('SELECT * FROM test_report ORDER BY generated_at DESC LIMIT 1');\n    await db.close();\n    return [{ json: row || { status: 'missing', report_id: null } }];\n  }\n  const validationError = validatePlan(queryPlan);\n  if (validationError) {\n    await db.close();\n    return [{ json: { query_id: queryId, raw_query: rawQuery, query_plan: queryPlan, query_plan_valid: false, validation_error: validationError, no_answer: true, no_answer_reason: 'query_plan_invalid' } }];\n  }\n  const cards = await fetchCandidates(db, queryPlan, 3, 0);\n  const evidenceCards = cards.filter((card) => hasEvidence(card, queryPlan.requested_fields));\n  const fallbackCandidates = await fetchCandidates(db, queryPlan, 7, 3);\n  await db.close();\n  if (!evidenceCards.length) {\n    return [{ json: { query_id: queryId, raw_query: rawQuery, query_plan: queryPlan, query_plan_valid: true, answer: '', cards, no_answer: true, no_answer_reason: cards.length ? 'missing_evidence_text' : 'no_candidate', relaxation_options: relaxationOptions, fallback_candidates: fallbackCandidates, processing_log: ['received', 'planned', 'searched', 'no_answer'] } }];\n  }\n  const answer = answerFromCards(evidenceCards, queryPlan.requested_fields);\n  return [{ json: { query_id: queryId, raw_query: rawQuery, query_plan: queryPlan, query_plan_valid: true, answer: answer.answer, cards: evidenceCards, cited_fields: answer.cited_fields, no_answer: false, relaxation_options: [], fallback_candidates: fallbackCandidates, processing_log: ['received', 'planned', 'searched', 'answered'] } }];\n} catch (error) {\n  try { if (db) await db.close(); } catch (_) {}\n  return [{ json: { status: 'failed', error_code: 'sqlite_read_failed', error_message: error.message } }];\n}"
-      },
-      "id": "df41a31d-2436-4f54-8b6b-59d195ce7400",
-      "name": "Route question action",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -740,
-        260
-      ]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}",
-        "options": {}
-      },
-      "id": "b032409a-bb8d-4c1b-a5d1-2842d0364263",
-      "name": "Respond question-submit",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        -500,
-        260
-      ]
     }
   ],
   "connections": {
@@ -393,38 +355,8 @@
           }
         ]
       ]
-    },
-    "Webhook - question-submit": {
-      "main": [
-        [
-          {
-            "node": "Route question action",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Route question action": {
-      "main": [
-        [
-          {
-            "node": "Respond question-submit",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
-  "pinData": {},
-  "settings": {
-    "executionOrder": "v1",
-    "timezone": "Asia/Seoul"
-  },
-  "staticData": null,
-  "tags": [],
-  "triggerCount": 2,
-  "updatedAt": "2026-05-23T00:00:00.000+09:00",
-  "versionId": "phase-5"
+  "triggerCount": 1,
+  "versionId": "aaa994c1-e809-4ea6-9290-53648ee31c89"
 }
