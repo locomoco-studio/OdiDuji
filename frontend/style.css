@@ -386,6 +386,46 @@ button {
   gap: 12px;
 }
 
+.upload-results {
+  display: grid;
+  gap: 20px;
+}
+
+.upload-bucket {
+  display: grid;
+  gap: 10px;
+}
+
+.bucket-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bucket-heading h3 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.bucket-heading span {
+  display: inline-grid;
+  min-width: 28px;
+  min-height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--color-dark-graphite);
+  color: var(--color-steel-gray);
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.upload-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .preview-card {
   position: relative;
   aspect-ratio: 1.08;
@@ -395,11 +435,26 @@ button {
   background: var(--color-dark-graphite);
 }
 
+.preview-card.is-placeholder {
+  display: grid;
+  place-items: center;
+  padding: 18px 10px 42px;
+}
+
 .preview-card img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.preview-file-name {
+  max-width: 100%;
+  color: var(--color-steel-gray);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .preview-card .remove {
@@ -635,6 +690,8 @@ button {
 }
 
 .thumb {
+  position: relative;
+  overflow: hidden;
   display: grid;
   aspect-ratio: 1;
   place-items: center;
@@ -646,6 +703,38 @@ button {
   color: var(--color-cloud-white);
   padding: 0;
   font-weight: 800;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  grid-area: 1 / 1;
+}
+
+.thumb-label {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  border-radius: 999px;
+  background: rgba(9, 9, 11, 0.68);
+  color: var(--color-cloud-white);
+  padding: 4px 7px;
+  font-size: 11px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thumb.is-fallback .thumb-label {
+  position: static;
+  max-width: 90%;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  white-space: normal;
 }
 
 .thumb.yellow {

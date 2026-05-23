@@ -6,6 +6,14 @@ const uploadWebhookUrlInput = document.querySelector("#uploadWebhookUrl");
 const questionWebhookUrlInput = document.querySelector("#questionWebhookUrl");
 const dropzone = document.querySelector("#dropzone");
 const previewGrid = document.querySelector("#previewGrid");
+const uploadPendingSection = document.querySelector("#uploadPendingSection");
+const uploadSuccessSection = document.querySelector("#uploadSuccessSection");
+const uploadFailureSection = document.querySelector("#uploadFailureSection");
+const uploadSuccessGrid = document.querySelector("#uploadSuccessGrid");
+const uploadFailureGrid = document.querySelector("#uploadFailureGrid");
+const pendingUploadCount = document.querySelector("#pendingUploadCount");
+const successUploadCount = document.querySelector("#successUploadCount");
+const failureUploadCount = document.querySelector("#failureUploadCount");
 const successStatus = document.querySelector("#successStatus");
 const errorStatus = document.querySelector("#errorStatus");
 const questionForm = document.querySelector("#questionForm");
@@ -25,6 +33,7 @@ const maxFileSize = 10 * 1024 * 1024;
 const legacyWebhookBaseUrlStorageKey = "odiduji.webhookBaseUrl";
 const uploadWebhookUrlStorageKey = "odiduji.uploadWebhookUrl";
 const questionWebhookUrlStorageKey = "odiduji.questionWebhookUrl";
+const activeTabStorageKey = "odiduji.activeTab";
 const defaultWebhookBaseUrl = "http://127.0.0.1:5678/webhook";
 const defaultUploadWebhookUrl = `${defaultWebhookBaseUrl}/image-upload`;
 const defaultQuestionWebhookUrl = `${defaultWebhookBaseUrl}/question-submit`;
@@ -37,19 +46,46 @@ const stateViews = {
   fallback: fallbackState,
 };
 
+let activeQuestionRequestId = 0;
+
 const evidenceBySource = {
   assignment: "제출 기한은 5월 28일 23:59까지입니다.",
   scholarship: "신청 기간 내 서류를 업로드해야 합니다.",
 };
 
-function showTab(tabName) {
+const fieldLabels = {
+  deadline: "마감/기간",
+  amount: "금액",
+  currency: "통화",
+  required_submission: "제출물",
+  source: "출처",
+  location_name: "장소",
+  address: "주소",
+};
+
+const importantFieldOrder = [
+  "deadline",
+  "amount",
+  "currency",
+  "required_submission",
+  "location_name",
+  "address",
+  "source",
+];
+
+function showTab(tabName, options = {}) {
+  const targetTab = tabName === "question" ? "question" : "upload";
   tabs.forEach((tab) => {
-    tab.classList.toggle("is-active", tab.dataset.tab === tabName);
+    tab.classList.toggle("is-active", tab.dataset.tab === targetTab);
   });
 
   panels.forEach((panel) => {
-    panel.classList.toggle("is-active", panel.dataset.panel === tabName);
+    panel.classList.toggle("is-active", panel.dataset.panel === targetTab);
   });
+
+  if (options.persist !== false) {
+    sessionStorage.setItem(activeTabStorageKey, targetTab);
+  }
 }
 
 function setStatus(type, message) {
@@ -128,6 +164,28 @@ function updatePreviewMeta(card, message, type = "info") {
   meta.dataset.type = type;
 }
 
+function updateUploadBuckets() {
+  const pendingCount = previewGrid.children.length;
+  const successCount = uploadSuccessGrid.children.length;
+  const failureCount = uploadFailureGrid.children.length;
+
+  uploadPendingSection.hidden = pendingCount === 0;
+  uploadSuccessSection.hidden = successCount === 0;
+  uploadFailureSection.hidden = failureCount === 0;
+
+  pendingUploadCount.textContent = String(pendingCount);
+  successUploadCount.textContent = String(successCount);
+  failureUploadCount.textContent = String(failureCount);
+}
+
+function moveUploadCard(card, targetGrid, message, type) {
+  if (card.dataset.removed === "true") return;
+  updatePreviewMeta(card, message, type);
+  card.dataset.status = type;
+  targetGrid.prepend(card);
+  updateUploadBuckets();
+}
+
 async function uploadImage(file, card) {
   const formData = new FormData();
   formData.append("image", file, file.name);
@@ -142,7 +200,7 @@ async function uploadImage(file, card) {
       body: formData,
     });
   } catch (error) {
-    updatePreviewMeta(card, "webhook 연결 실패", "error");
+    moveUploadCard(card, uploadFailureGrid, "webhook 연결 실패", "error");
     setStatus("error", `webhook_connection_failed: ${getUploadWebhookUrl()}`);
     return;
   }
@@ -156,27 +214,27 @@ async function uploadImage(file, card) {
   }
 
   if (!response.ok) {
-    updatePreviewMeta(card, `HTTP ${response.status}`, "error");
+    moveUploadCard(card, uploadFailureGrid, `HTTP ${response.status}`, "error");
     setStatus("error", `webhook_http_${response.status}`);
     return;
   }
 
   if (!payload) {
-    updatePreviewMeta(card, "응답 JSON 없음", "error");
+    moveUploadCard(card, uploadFailureGrid, "응답 JSON 없음", "error");
     setStatus("error", "invalid_webhook_response");
     return;
   }
 
   if (payload.status === "rejected" || payload.validation_status === "rejected") {
     const reason = payload.reject_reason || "upload_rejected";
-    updatePreviewMeta(card, reason, "error");
+    moveUploadCard(card, uploadFailureGrid, reason, "error");
     setStatus("error", reason);
     return;
   }
 
   const captureId = payload.capture_id || "capture_id 없음";
   const cacheLabel = payload.cache_hit ? "cache_hit" : payload.status || "received";
-  updatePreviewMeta(card, `${captureId} · ${cacheLabel}`, "success");
+  moveUploadCard(card, uploadSuccessGrid, `${captureId} · ${cacheLabel}`, "success");
   setStatus("success", `${captureId} · ${cacheLabel}`);
 }
 
@@ -195,11 +253,111 @@ function formatConfidence(card) {
 
 function evidenceSummary(card) {
   const evidence = card.evidence_text || {};
-  const first = Object.values(evidence).find((value) => value !== null && value !== "");
+  const evidencePriority = [
+    "deadline",
+    "has_submission",
+    "amount",
+    "location_name",
+    "address",
+    "source",
+    "event_date",
+    "created_date",
+    "deadline_bucket",
+    "title",
+  ];
+  const first = evidencePriority.map((key) => evidence[key]).find((value) => value !== null && value !== undefined && value !== "");
+  if (first) return first;
+  const ignoredKeys = new Set(["doc_type", "classification_state"]);
+  const fallback = Object.entries(evidence).find(
+    ([key, value]) => !ignoredKeys.has(key) && value !== null && value !== undefined && value !== "",
+  );
+  if (fallback) return fallback[1];
   return first || "근거 문장 없음";
 }
 
+function toBrowserAssetPath(assetPath) {
+  if (!assetPath) return "";
+  if (/^https?:\/\//i.test(assetPath) || assetPath.startsWith("data:")) {
+    return assetPath;
+  }
+
+  const normalizedPath = assetPath.startsWith("/") ? assetPath : `/${assetPath}`;
+  const isFrontendPath = window.location.pathname.includes("/frontend/");
+  if (window.location.protocol === "file:" || isFrontendPath) {
+    return `..${normalizedPath}`;
+  }
+  return normalizedPath;
+}
+
+function thumbnailCandidates(card) {
+  const candidates = [];
+  const sourceImagePath = card.source_image_path || "";
+
+  const captureMatch = String(card.capture_id || "").match(/^CAP-(\d{3})$/);
+  const extMatch = sourceImagePath.match(/\.([a-z0-9]+)$/i);
+  if (captureMatch) {
+    const number = captureMatch[1];
+    const extensions = new Set(extMatch ? [extMatch[1].toLowerCase()] : []);
+    ["png", "jpg", "jpeg", "PNG", "JPG", "JPEG"].forEach((extension) => extensions.add(extension));
+
+    extensions.forEach((extension) => {
+      candidates.push(toBrowserAssetPath(`/static/captures/img_${number}.${extension}`));
+      candidates.push(toBrowserAssetPath(`/dataset/img_${number}.${extension}`));
+    });
+  }
+  if (sourceImagePath) {
+    candidates.push(toBrowserAssetPath(sourceImagePath));
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+function formatFieldValue(key, value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (key === "amount" && Number.isFinite(Number(value))) {
+    return `${Number(value).toLocaleString("ko-KR")}원`;
+  }
+  return String(value);
+}
+
+function appendImportantFields(dl, card) {
+  const fields = card.fields || {};
+  importantFieldOrder.forEach((key) => {
+    const value = formatFieldValue(key, fields[key]);
+    if (!value) return;
+    const row = createElement("div");
+    row.append(createElement("dt", null, fieldLabels[key] || key), createElement("dd", null, value));
+    dl.append(row);
+  });
+
+  const evidence = evidenceSummary(card);
+  if (evidence) {
+    const evidenceRow = createElement("div");
+    evidenceRow.append(createElement("dt", null, "근거"), createElement("dd", null, evidence));
+    dl.append(evidenceRow);
+  }
+}
+
+function setQuestionLoadingState() {
+  results.setAttribute("aria-busy", "true");
+  if (results.hidden) {
+    showResultState("empty");
+  }
+  emptyState.querySelector("strong").textContent = "질문을 전송하는 중입니다.";
+  emptyState.querySelector("p").textContent = "n8n이 근거 카드와 추출 필드를 검색하고 있습니다.";
+}
+
+function showQuestionMessage(title, detail) {
+  results.removeAttribute("aria-busy");
+  showResultState("empty");
+  emptyState.querySelector("strong").textContent = title;
+  emptyState.querySelector("p").textContent = detail;
+}
+
 function renderResultCards(payload) {
+  showTab("question");
+  results.removeAttribute("aria-busy");
+
   if (payload.no_answer) {
     showResultState("noAnswer");
     evidenceText.textContent = payload.no_answer_reason || "no_answer";
@@ -228,7 +386,26 @@ function renderResultCards(payload) {
     const article = createElement("article", `result-card${card.needs_review ? " needs-review" : ""}`);
     const thumb = createElement("button", card.needs_review ? "thumb yellow" : "thumb");
     thumb.type = "button";
-    thumb.append(createElement("span", null, card.doc_type || "card"));
+    thumb.setAttribute("aria-label", `${card.title || card.capture_id || "캡처"} 원본 보기`);
+    const candidates = thumbnailCandidates(card);
+    if (candidates.length) {
+      const image = document.createElement("img");
+      let candidateIndex = 0;
+      image.src = candidates[candidateIndex];
+      image.alt = card.title || card.capture_id || "캡처 이미지";
+      image.loading = "lazy";
+      image.addEventListener("error", () => {
+        candidateIndex += 1;
+        if (candidates[candidateIndex]) {
+          image.src = candidates[candidateIndex];
+          return;
+        }
+        image.remove();
+        thumb.classList.add("is-fallback");
+      });
+      thumb.append(image);
+    }
+    thumb.append(createElement("span", "thumb-label", card.doc_type || "card"));
     thumb.addEventListener("click", () => {
       evidenceText.textContent = evidenceSummary(card);
     });
@@ -243,16 +420,7 @@ function renderResultCards(payload) {
     header.append(heading, createElement("span", card.needs_review ? "confidence review" : "confidence", formatConfidence(card)));
 
     const dl = document.createElement("dl");
-    const fields = card.fields || {};
-    Object.entries(fields).forEach(([key, value]) => {
-      if (value === null || value === "") return;
-      const row = createElement("div");
-      row.append(createElement("dt", null, key), createElement("dd", null, String(value)));
-      dl.append(row);
-    });
-    const evidenceRow = createElement("div");
-    evidenceRow.append(createElement("dt", null, "근거"), createElement("dd", null, evidenceSummary(card)));
-    dl.append(evidenceRow);
+    appendImportantFields(dl, card);
 
     content.append(header, dl);
     article.append(thumb, content);
@@ -264,8 +432,10 @@ function renderResultCards(payload) {
 }
 
 async function submitQuestion(query) {
-  showResultState("empty");
-  emptyState.querySelector("strong").textContent = "질문을 전송하는 중입니다.";
+  const requestId = activeQuestionRequestId + 1;
+  activeQuestionRequestId = requestId;
+  showTab("question");
+  setQuestionLoadingState();
 
   const body = new FormData();
   body.append("raw_query", query);
@@ -277,56 +447,56 @@ async function submitQuestion(query) {
       body,
     });
   } catch (error) {
-    emptyState.querySelector("strong").textContent = "질문 웹훅 연결 실패";
-    emptyState.querySelector("p").textContent = getQuestionWebhookUrl();
+    if (requestId !== activeQuestionRequestId) return;
+    showQuestionMessage("질문 웹훅 연결 실패", getQuestionWebhookUrl());
     return;
   }
 
   const payload = await response.json().catch(() => null);
+  if (requestId !== activeQuestionRequestId) return;
+
   if (!response.ok || !payload) {
-    emptyState.querySelector("strong").textContent = `질문 응답 오류 ${response.status}`;
-    emptyState.querySelector("p").textContent = "n8n Webhook 응답을 확인하세요.";
+    showQuestionMessage(`질문 응답 오류 ${response.status}`, "n8n Webhook 응답을 확인하세요.");
     return;
   }
 
   if (payload.status === "failed") {
-    emptyState.querySelector("strong").textContent = payload.error_code || "workflow_failed";
-    emptyState.querySelector("p").textContent = payload.error_message || "n8n workflow failed";
+    showQuestionMessage(payload.error_code || "workflow_failed", payload.error_message || "n8n workflow failed");
     return;
   }
 
   renderResultCards(payload);
 }
 
-function addPreview(file) {
-  const validationError = validateFile(file);
-  if (validationError) {
-    setStatus("error", validationError);
-    return;
-  }
-
+function createUploadCard(file) {
   const card = document.createElement("article");
   card.className = "preview-card";
 
   const image = document.createElement("img");
   image.alt = file.name;
-  image.src = URL.createObjectURL(file);
-  image.addEventListener(
-    "load",
-    () => {
-      URL.revokeObjectURL(image.src);
-    },
-    { once: true },
-  );
-
+  const objectUrl = URL.createObjectURL(file);
+  card.dataset.objectUrl = objectUrl;
+  image.src = objectUrl;
+  image.addEventListener("error", () => {
+    image.remove();
+    card.classList.add("is-placeholder");
+    if (!card.querySelector(".preview-file-name")) {
+      card.prepend(createElement("strong", "preview-file-name", file.name));
+    }
+  });
   const removeButton = document.createElement("button");
   removeButton.className = "remove";
   removeButton.type = "button";
   removeButton.setAttribute("aria-label", `${file.name} 제거`);
   removeButton.textContent = "x";
   removeButton.addEventListener("click", () => {
+    card.dataset.removed = "true";
+    if (card.dataset.objectUrl) {
+      URL.revokeObjectURL(card.dataset.objectUrl);
+    }
     card.remove();
-    if (!previewGrid.children.length) {
+    updateUploadBuckets();
+    if (!previewGrid.children.length && !uploadSuccessGrid.children.length && !uploadFailureGrid.children.length) {
       setStatus("", "");
     }
   });
@@ -337,7 +507,21 @@ function addPreview(file) {
   meta.dataset.type = "info";
 
   card.append(image, removeButton, meta);
+  return card;
+}
+
+function addPreview(file) {
+  const card = createUploadCard(file);
   previewGrid.prepend(card);
+  updateUploadBuckets();
+
+  const validationError = validateFile(file);
+  if (validationError) {
+    moveUploadCard(card, uploadFailureGrid, validationError, "error");
+    setStatus("error", validationError);
+    return;
+  }
+
   uploadImage(file, card);
 }
 
@@ -346,7 +530,10 @@ function handleFiles(files) {
 }
 
 tabs.forEach((tab) => {
-  tab.addEventListener("click", () => showTab(tab.dataset.tab));
+  tab.addEventListener("click", (event) => {
+    event.preventDefault();
+    showTab(tab.dataset.tab);
+  });
 });
 
 fileButton.addEventListener("click", () => fileInput.click());
@@ -373,6 +560,8 @@ questionWebhookUrlInput.addEventListener("change", () => {
   localStorage.setItem(questionWebhookUrlStorageKey, questionWebhookUrlInput.value);
 });
 
+showTab(sessionStorage.getItem(activeTabStorageKey) || "upload", { persist: false });
+
 ["dragenter", "dragover"].forEach((eventName) => {
   dropzone.addEventListener(eventName, (event) => {
     event.preventDefault();
@@ -392,10 +581,13 @@ dropzone.addEventListener("drop", (event) => {
 });
 
 quickQuestions.forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
     quickQuestions.forEach((item) => item.classList.remove("is-selected"));
     button.classList.add("is-selected");
     questionInput.value = button.dataset.question;
+    showTab("question");
     submitQuestion(button.dataset.question);
   });
 });
